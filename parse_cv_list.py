@@ -360,37 +360,37 @@ def main():
     parser.add_argument('--new', action='store_true', help='Parse only files not yet in Excel (auto-detect new)')
     parser.add_argument('--stats', action='store_true', help='Show statistics summary')
     parser.add_argument('--json-out', help='Output JSON file for Notion import')
-    parser.add_argument('--excel-path', default=None, help='Excel file path (default: input/CV_Conference_Database.xlsx)')
-    parser.add_argument('--input-dir', default=None, help='Input directory (default: input/ if exists, else script dir)')
+    parser.add_argument('--excel-path', default=None, help='Excel file path (default: data/CV_Conference_Database.xlsx)')
+    parser.add_argument('--data-dir', default=None, help='Data directory (default: data/ if exists, else script dir)')
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Resolve input directory: prefer input/ subfolder if it exists
-    if args.input_dir:
-        input_dir = os.path.abspath(args.input_dir)
-    elif os.path.isdir(os.path.join(script_dir, 'input')):
-        input_dir = os.path.join(script_dir, 'input')
+    # Resolve data directory: prefer data/ subfolder if it exists
+    if args.data_dir:
+        data_dir = os.path.abspath(args.data_dir)
+    elif os.path.isdir(os.path.join(script_dir, 'data')):
+        data_dir = os.path.join(script_dir, 'data')
     else:
-        input_dir = script_dir
+        data_dir = script_dir
 
-    # Resolve Excel path: prefer input/ location
+    # Resolve Excel path: prefer data/ location
     if args.excel_path:
         excel_path = args.excel_path
-    elif os.path.exists(os.path.join(input_dir, 'CV_Conference_Database.xlsx')):
-        excel_path = os.path.join(input_dir, 'CV_Conference_Database.xlsx')
+    elif os.path.exists(os.path.join(data_dir, 'CV_Conference_Database.xlsx')):
+        excel_path = os.path.join(data_dir, 'CV_Conference_Database.xlsx')
     else:
         excel_path = os.path.join(script_dir, 'CV_Conference_Database.xlsx')
 
     if args.stats:
-        show_stats(input_dir)
+        show_stats(data_dir)
         return
 
     if args.batch:
-        files = sorted(glob.glob(os.path.join(input_dir, 'CV list *')))
+        files = sorted(glob.glob(os.path.join(data_dir, 'CV list *')))
         files = [f for f in files if f.endswith(('.doc', '.docx', '.pdf'))]
     elif args.new:
         # Find files not yet recorded in Excel
-        all_files = sorted(glob.glob(os.path.join(input_dir, 'CV list *')))
+        all_files = sorted(glob.glob(os.path.join(data_dir, 'CV list *')))
         all_files = [f for f in all_files if f.endswith(('.doc', '.docx', '.pdf'))]
         if os.path.exists(excel_path):
             import openpyxl
@@ -409,11 +409,11 @@ def main():
         for f in files:
             print(f"  NEW: {os.path.basename(f)}")
     elif args.file:
-        # Check absolute path, then input_dir, then script_dir
+        # Check absolute path, then data_dir, then script_dir
         if os.path.isabs(args.file):
             fpath = args.file
-        elif os.path.exists(os.path.join(input_dir, args.file)):
-            fpath = os.path.join(input_dir, args.file)
+        elif os.path.exists(os.path.join(data_dir, args.file)):
+            fpath = os.path.join(data_dir, args.file)
         else:
             fpath = os.path.join(script_dir, args.file)
         if not os.path.exists(fpath):
