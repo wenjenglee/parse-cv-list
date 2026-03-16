@@ -21,9 +21,9 @@ Claude 會自動偵測新檔案、解析資料、匯入 Notion、更新 Excel。
 ```
 parse_cv_list/
 ├── parse_cv_list.py          # 主要解析腳本
-├── CV_Conference_Database.xlsx  # Excel 總表（所有案例）
 ├── notion_import.json        # 最近一次的 Notion 匯入暫存檔
-├── input/                    # 放置所有 CV list 原始檔案
+├── input/                    # 所有資料檔案（CV list + Excel）
+│   ├── CV_Conference_Database.xlsx  # Excel 總表（所有案例）
 │   ├── CV list 20180926.doc
 │   ├── CV list 20221019.docx
 │   ├── CV list 20250114 (1).pdf
