@@ -40,6 +40,14 @@ def parse_docx(filepath: str, conf_date: str) -> list[dict]:
     """解析 .docx 檔案（Word 表格格式）"""
     from docx import Document
     doc = Document(filepath)
+    # If filename date is incomplete (e.g. 202212 → 2022/12/01), try to find
+    # the actual date from document paragraphs (e.g. "CV Conference 2022/12/21")
+    if conf_date.endswith('/01'):
+        for para in doc.paragraphs:
+            m = re.search(r'(\d{4}/\d{2}/\d{2})', para.text)
+            if m:
+                conf_date = m.group(1)
+                break
     rows_out = []
     for table in doc.tables:
         for j, row in enumerate(table.rows):
@@ -58,12 +66,28 @@ def parse_docx(filepath: str, conf_date: str) -> list[dict]:
                 else:
                     name, chart_no = p1, p2
             else:
-                name, chart_no = name_chart, ''
+                # Name and chart no on same line: split at trailing alphanumeric ID
+                m = re.match(r'^(.*?)\s*([A-Z]?\d{6,7})\s*$', name_chart.strip())
+                if m:
+                    name, chart_no = m.group(1).strip(), m.group(2).strip()
+                else:
+                    name, chart_no = name_chart, ''
 
             ag = cells[1].strip()
-            age_m = re.match(r'(\d+)\s*([MF])', ag)
-            age = age_m.group(1) if age_m else ag
-            gender = age_m.group(2) if age_m else ''
+            # Handle formats: "65M", "65 M", "76 y/r\nmale", "76y/o Male"
+            # Try digit+M/F pattern first (most common: "65M", "65 M")
+            age_gender_m = re.match(r'(\d{2,3})\s*([MF])\b', ag, re.IGNORECASE)
+            if age_gender_m:
+                age = age_gender_m.group(1)
+                gender = age_gender_m.group(2).upper()
+            else:
+                age_num = re.search(r'(\d{2,3})', ag)
+                age = age_num.group(1) if age_num else ''
+                gender_word = re.search(r'\b(male|female)\b', ag, re.IGNORECASE)
+                if gender_word:
+                    gender = 'M' if gender_word.group(1).lower() == 'male' else 'F'
+                else:
+                    gender = ''
 
             rows_out.append({
                 'conference_date': conf_date,
@@ -226,6 +250,14 @@ def build_notion_page(r: dict) -> dict:
     return {"properties": props}
 
 
+def sanitize(val):
+    """Remove illegal Excel characters (control chars except tab/newline)"""
+    if not isinstance(val, str):
+        return val
+    import re as _re
+    return _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', val)
+
+
 def update_excel(records: list[dict], excel_path: str):
     """新增記錄到 Excel 總表"""
     import openpyxl
@@ -268,18 +300,18 @@ def update_excel(records: list[dict], excel_path: str):
         row_num = start_row + idx
         values = [
             existing_count + idx + 1,
-            r.get('conference_date', ''),
-            r.get('chart_no', ''),
-            r.get('name', ''),
+            sanitize(r.get('conference_date', '')),
+            sanitize(r.get('chart_no', '')),
+            sanitize(r.get('name', '')),
             r.get('age', ''),
-            r.get('gender', ''),
-            r.get('reason_of_mpi', ''),
-            r.get('risk_factors', ''),
-            r.get('mpi_dates', ''),
-            r.get('cta_dates', ''),
-            r.get('cag_dates', ''),
-            r.get('source_file', ''),
-            r.get('data_quality', ''),
+            sanitize(r.get('gender', '')),
+            sanitize(r.get('reason_of_mpi', '')),
+            sanitize(r.get('risk_factors', '')),
+            sanitize(r.get('mpi_dates', '')),
+            sanitize(r.get('cta_dates', '')),
+            sanitize(r.get('cag_dates', '')),
+            sanitize(r.get('source_file', '')),
+            sanitize(r.get('data_quality', '')),
         ]
         for col, val in enumerate(values, 1):
             cell = ws.cell(row=row_num, column=col, value=val)
@@ -324,23 +356,66 @@ def main():
     parser = argparse.ArgumentParser(description='CV Conference List Parser')
     parser.add_argument('file', nargs='?', help='CV list file to parse')
     parser.add_argument('--update-excel', action='store_true', help='Append to Excel master file')
-    parser.add_argument('--batch', action='store_true', help='Parse all files in current folder')
+    parser.add_argument('--batch', action='store_true', help='Parse all files in input folder')
+    parser.add_argument('--new', action='store_true', help='Parse only files not yet in Excel (auto-detect new)')
     parser.add_argument('--stats', action='store_true', help='Show statistics summary')
     parser.add_argument('--json-out', help='Output JSON file for Notion import')
-    parser.add_argument('--excel-path', default='CV_Conference_Database.xlsx', help='Excel file path')
+    parser.add_argument('--excel-path', default=None, help='Excel file path (default: input/CV_Conference_Database.xlsx)')
+    parser.add_argument('--input-dir', default=None, help='Input directory (default: input/ if exists, else script dir)')
     args = parser.parse_args()
 
-    folder = os.path.dirname(os.path.abspath(__file__))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Resolve input directory: prefer input/ subfolder if it exists
+    if args.input_dir:
+        input_dir = os.path.abspath(args.input_dir)
+    elif os.path.isdir(os.path.join(script_dir, 'input')):
+        input_dir = os.path.join(script_dir, 'input')
+    else:
+        input_dir = script_dir
+
+    # Resolve Excel path: prefer input/ location
+    if args.excel_path:
+        excel_path = args.excel_path
+    elif os.path.exists(os.path.join(input_dir, 'CV_Conference_Database.xlsx')):
+        excel_path = os.path.join(input_dir, 'CV_Conference_Database.xlsx')
+    else:
+        excel_path = os.path.join(script_dir, 'CV_Conference_Database.xlsx')
 
     if args.stats:
-        show_stats(folder)
+        show_stats(input_dir)
         return
 
     if args.batch:
-        files = sorted(glob.glob(os.path.join(folder, 'CV list *')))
+        files = sorted(glob.glob(os.path.join(input_dir, 'CV list *')))
         files = [f for f in files if f.endswith(('.doc', '.docx', '.pdf'))]
+    elif args.new:
+        # Find files not yet recorded in Excel
+        all_files = sorted(glob.glob(os.path.join(input_dir, 'CV list *')))
+        all_files = [f for f in all_files if f.endswith(('.doc', '.docx', '.pdf'))]
+        if os.path.exists(excel_path):
+            import openpyxl
+            wb = openpyxl.load_workbook(excel_path)
+            ws = wb['CV Conference Cases']
+            processed = set(ws.cell(row=r, column=12).value for r in range(2, ws.max_row + 1))
+            files = [f for f in all_files if os.path.basename(f) not in processed]
+            print(f"Already processed: {len(processed)} files")
+            print(f"New files found: {len(files)}")
+        else:
+            files = all_files
+            print(f"No Excel found, treating all {len(files)} files as new")
+        if not files:
+            print("No new files to process.")
+            sys.exit(0)
+        for f in files:
+            print(f"  NEW: {os.path.basename(f)}")
     elif args.file:
-        fpath = os.path.join(folder, args.file) if not os.path.isabs(args.file) else args.file
+        # Check absolute path, then input_dir, then script_dir
+        if os.path.isabs(args.file):
+            fpath = args.file
+        elif os.path.exists(os.path.join(input_dir, args.file)):
+            fpath = os.path.join(input_dir, args.file)
+        else:
+            fpath = os.path.join(script_dir, args.file)
         if not os.path.exists(fpath):
             print(f"File not found: {fpath}")
             sys.exit(1)
@@ -361,7 +436,7 @@ def main():
         sys.exit(0)
 
     # JSON output for Notion
-    json_out = args.json_out or os.path.join(folder, 'notion_import.json')
+    json_out = args.json_out or os.path.join(script_dir, 'notion_import.json')
     notion_pages = [build_notion_page(r) for r in all_records]
     with open(json_out, 'w', encoding='utf-8') as f:
         json.dump(notion_pages, f, ensure_ascii=False, indent=2)
@@ -369,7 +444,6 @@ def main():
 
     # Excel
     if args.update_excel:
-        excel_path = os.path.join(folder, args.excel_path)
         update_excel(all_records, excel_path)
 
     print(f"\nDone. {len(all_records)} total records processed.")

@@ -11,9 +11,10 @@
 
 ### 資料庫位置
 - **Excel 總表**: `CV_Conference_Database.xlsx`（統計研究用）
-- **Notion Database**: "CV Conference Cases v2"，Data Source ID: `48cec714-41dc-4fa0-a808-18d723176e6a`
-  - Database URL: https://www.notion.so/89629fc261334d509c753bd48e27beaf
+- **Notion Database**: "CV Conference Cases v3"，Data Source ID: `d3512b4c-5371-4928-a19b-d3ff69b4dd70`
+  - Database URL: https://www.notion.so/7bbdd0d027574d2ca2f1aa78a449029e
   - 位於 Notion 的「心血管影像跨科部討論會」頁面下
+- **舊的 Notion Database** (v2, 有錯誤資料): https://www.notion.so/89629fc261334d509c753bd48e27beaf — 可刪除
 - **舊的 Notion Database** (v1, 有錯誤資料): https://www.notion.so/c5fad0747e304d6a8e0d39787cb29b5d — 可刪除
 
 ### 欄位定義
@@ -39,22 +40,30 @@
 
 ## 常見操作
 
-### 新增一次討論會資料
+### 新增一次討論會資料（標準流程）
+
+**您只需要做一件事**：把新的 CV list 檔案放進 `input/`，然後告訴 Claude：
+> 「有新的 CV list，請處理」
+
+Claude 會自動執行以下步驟：
+
 ```bash
-# 1. 解析新檔案，產生 Notion JSON
-python parse_cv_list.py "CV list 20260318.docx"
+# Step 1: 偵測哪些是新檔案（比對 Excel 的 Source File 欄）
+python parse_cv_list.py --new
 
-# 2. 同時更新 Excel
-python parse_cv_list.py "CV list 20260318.docx" --update-excel
+# Step 2: 解析新檔案並更新 Excel
+python parse_cv_list.py --new --update-excel
 
-# 3. 匯入 Notion（在 Claude 中執行）
-# 讀取 notion_import.json，使用 Notion MCP create-pages
-# parent: {"data_source_id": "48cec714-41dc-4fa0-a808-18d723176e6a"}
+# Step 3: Claude 讀取 notion_import.json，匯入 Notion（append）
+# 使用 Notion MCP create-pages
+# parent: {"data_source_id": "d3512b4c-5371-4928-a19b-d3ff69b4dd70"}
 ```
 
-### 完整重建
+⚠️ **不要用 `--batch --update-excel`**，否則會將所有舊資料重複寫入 Excel。
+
+### 完整重建（從零開始）
 ```bash
-# 重新解析所有檔案
+# 重新解析所有檔案並重建 Excel（需先手動刪除舊 Excel）
 python parse_cv_list.py --batch --update-excel
 
 # 查看統計
